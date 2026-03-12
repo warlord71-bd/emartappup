@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "eMart BD",
+    "slug": "emart-bd",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "emartbd",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "android": {
+      "package": "com.emartbd.app",
+      "versionCode": 1
+    },
+    "extra": {
+      "eas": {
+        "projectId": "8b0a3cc9-2926-4fe5-8504-6c549b5dedcd"
+      }
+    }
+  }
+}
