@@ -1,287 +1,238 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
-  Alert,
-  ScrollView
-} from "react-native";
+  Animated,
+} from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
+import { COLORS, FONTS } from '../theme/colors';
+import { useLanguage } from '../context/LanguageContext';
 
-import { LinearGradient } from "expo-linear-gradient";
+const OrderSuccessScreen = ({ navigation, route }) => {
+  const { t } = useLanguage();
+  const { orderId } = route.params || {};
 
-import { COLORS, FONTS } from "../theme/colors";
-import { useCart } from "../context/CartContext";
-import { createOrder } from "../services/woocommerce";
+  const scaleAnim = useRef(new Animated.Value(0)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
 
-export default function CheckoutScreen({ navigation }) {
-
-  const { items, cartTotal, clearCart } = useCart();
-
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [address, setAddress] = useState("");
-
-  const [payment, setPayment] = useState("cod");
-  const [trxId, setTrxId] = useState("");
-
-  const deliveryFee = cartTotal >= 2000 ? 0 : 80;
-  const total = cartTotal + deliveryFee;
-
-  const placeOrder = async () => {
-
-    if (!name || !phone || !address) {
-      Alert.alert("Missing Info", "Please fill all fields.");
-      return;
-    }
-
-    if ((payment === "bkash" || payment === "nagad") && !trxId) {
-      Alert.alert("Transaction ID required");
-      return;
-    }
-
-    const lineItems = items.map(i => ({
-      product_id: i.id,
-      quantity: i.quantity
-    }));
-
-    const orderData = {
-      payment_method: payment,
-      payment_method_title:
-        payment === "cod"
-          ? "Cash on Delivery"
-          : payment === "bkash"
-          ? "bKash"
-          : "Nagad",
-
-      set_paid: payment !== "cod",
-
-      billing: {
-        first_name: name,
-        phone: phone,
-        address_1: address
-      },
-
-      shipping: {
-        first_name: name,
-        address_1: address
-      },
-
-      customer_note:
-        payment === "cod"
-          ? "Cash on Delivery"
-          : `${payment} Transaction ID: ${trxId}`,
-
-      line_items: lineItems
-    };
-
-    const res = await createOrder(orderData);
-
-    if (res.error) {
-      Alert.alert("Order failed", res.error);
-      return;
-    }
-
-    clearCart();
-
-    Alert.alert(
-      "Order Placed!",
-      "Your order has been placed successfully.",
-      [{ text: "OK", onPress: () => navigation.navigate("HomeTab") }]
-    );
-  };
+  useEffect(() => {
+    Animated.sequence([
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        friction: 4,
+        tension: 80,
+        useNativeDriver: true,
+      }),
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
 
   return (
-    <ScrollView style={styles.container}>
-
-      <Text style={styles.title}>Checkout</Text>
-
-      {/* CUSTOMER INFO */}
-
-      <TextInput
-        placeholder="Full Name"
-        style={styles.input}
-        value={name}
-        onChangeText={setName}
-      />
-
-      <TextInput
-        placeholder="Phone Number"
-        style={styles.input}
-        value={phone}
-        onChangeText={setPhone}
-        keyboardType="phone-pad"
-      />
-
-      <TextInput
-        placeholder="Delivery Address"
-        style={[styles.input, { height: 80 }]}
-        value={address}
-        onChangeText={setAddress}
-        multiline
-      />
-
-      {/* PAYMENT METHODS */}
-
-      <Text style={styles.sectionTitle}>Payment Method</Text>
-
-      <TouchableOpacity
-        style={[styles.payOption, payment === "bkash" && styles.payActive]}
-        onPress={() => setPayment("bkash")}
-      >
-        <Text>Pay with bKash</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={[styles.payOption, payment === "nagad" && styles.payActive]}
-        onPress={() => setPayment("nagad")}
-      >
-        <Text>Pay with Nagad</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={[styles.payOption, payment === "cod" && styles.payActive]}
-        onPress={() => setPayment("cod")}
-      >
-        <Text>Cash on Delivery</Text>
-      </TouchableOpacity>
-
-      {/* MERCHANT INFO */}
-
-      {(payment === "bkash" || payment === "nagad") && (
-        <View style={styles.paymentBox}>
-
-          <Text style={styles.merchantText}>
-            {payment === "bkash" ? "bKash" : "Nagad"} Merchant Number
-          </Text>
-
-          <Text style={styles.merchantNumber}>
-            0191979797399
-          </Text>
-
-          <TextInput
-            placeholder="Enter Transaction ID"
-            style={styles.input}
-            value={trxId}
-            onChangeText={setTrxId}
-          />
-
-        </View>
-      )}
-
-      {/* ORDER SUMMARY */}
-
-      <View style={styles.summary}>
-
-        <Text>Subtotal: ৳{Math.round(cartTotal)}</Text>
-
-        <Text>
-          Delivery: {deliveryFee === 0 ? "Free" : `৳${deliveryFee}`}
-        </Text>
-
-        <Text style={styles.total}>
-          Total: ৳{Math.round(total)}
-        </Text>
-
-      </View>
-
-      {/* PLACE ORDER */}
-
-      <TouchableOpacity onPress={placeOrder}>
+    <View style={styles.container}>
+      {/* Success Icon */}
+      <Animated.View style={[styles.iconWrap, { transform: [{ scale: scaleAnim }] }]}>
         <LinearGradient
-          colors={COLORS.gradientButton}
-          style={styles.button}
+          colors={[COLORS.success, '#2ECC71']}
+          style={styles.iconCircle}
         >
-          <Text style={styles.buttonText}>Place Order</Text>
+          <Ionicons name="checkmark" size={48} color="#fff" />
         </LinearGradient>
-      </TouchableOpacity>
+      </Animated.View>
 
-      <View style={{ height: 40 }} />
+      {/* Content */}
+      <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
+        <Text style={styles.title}>Order Placed!</Text>
+        <Text style={styles.subtitle}>
+          Your order has been placed successfully. We'll notify you when it's on the way.
+        </Text>
 
-    </ScrollView>
+        {orderId && (
+          <View style={styles.orderIdBox}>
+            <Text style={styles.orderIdLabel}>Order ID</Text>
+            <Text style={styles.orderIdValue}>#{orderId}</Text>
+          </View>
+        )}
+
+        {/* Info Cards */}
+        <View style={styles.infoCards}>
+          {[
+            {
+              icon: 'time-outline',
+              label: 'Processing',
+              sub: 'Your order is being confirmed',
+            },
+            {
+              icon: 'bicycle-outline',
+              label: 'Delivery',
+              sub: 'Estimated 2-5 business days',
+            },
+            {
+              icon: 'call-outline',
+              label: 'Support',
+              sub: 'WhatsApp for any queries',
+            },
+          ].map((item, i) => (
+            <View key={i} style={styles.infoCard}>
+              <View style={styles.infoIcon}>
+                <Ionicons name={item.icon} size={18} color={COLORS.accent} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.infoLabel}>{item.label}</Text>
+                <Text style={styles.infoSub}>{item.sub}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+
+        {/* Actions */}
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => navigation.navigate('MyOrders')}
+        >
+          <LinearGradient
+            colors={COLORS.gradientButton}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.primaryBtn}
+          >
+            <Ionicons name="cube-outline" size={18} color="#fff" />
+            <Text style={styles.primaryBtnText}>View My Orders</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.secondaryBtn}
+          activeOpacity={0.8}
+          onPress={() => navigation.navigate('HomeTab')}
+        >
+          <Text style={styles.secondaryBtnText}>Continue Shopping</Text>
+        </TouchableOpacity>
+      </Animated.View>
+    </View>
   );
-}
+};
+
+export default OrderSuccessScreen;
 
 const styles = StyleSheet.create({
-
-  container:{
-    flex:1,
-    padding:20,
-    backgroundColor:COLORS.bg
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
   },
-
-  title:{
-    fontSize:22,
+  iconWrap: {
+    marginBottom: 24,
+  },
+  iconCircle: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  content: {
+    width: '100%',
+    alignItems: 'center',
+  },
+  title: {
+    fontSize: 24,
     ...FONTS.bold,
-    marginBottom:20
+    color: COLORS.text,
+    marginBottom: 8,
   },
-
-  input:{
-    borderWidth:1,
-    borderColor:COLORS.border,
-    borderRadius:10,
-    padding:12,
-    marginBottom:12,
-    backgroundColor:"#fff"
+  subtitle: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 20,
+    paddingHorizontal: 16,
   },
-
-  sectionTitle:{
-    fontSize:14,
+  orderIdBox: {
+    backgroundColor: COLORS.accentLight,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.tagBg,
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  orderIdLabel: {
+    fontSize: 10,
+    color: COLORS.textSecondary,
+    ...FONTS.semibold,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  orderIdValue: {
+    fontSize: 20,
+    ...FONTS.extrabold,
+    color: COLORS.accent,
+    marginTop: 2,
+  },
+  infoCards: {
+    width: '100%',
+    gap: 8,
+    marginBottom: 24,
+  },
+  infoCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 14,
+    gap: 12,
+    ...COLORS.shadow,
+  },
+  infoIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: COLORS.accentLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  infoLabel: {
+    fontSize: 13,
+    ...FONTS.semibold,
+    color: COLORS.text,
+  },
+  infoSub: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    marginTop: 1,
+  },
+  primaryBtn: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 14,
+  },
+  primaryBtnText: {
+    fontSize: 14,
     ...FONTS.bold,
-    marginTop:10,
-    marginBottom:10
+    color: '#fff',
   },
-
-  payOption:{
-    padding:12,
-    borderWidth:1,
-    borderColor:COLORS.border,
-    borderRadius:8,
-    marginBottom:8,
-    backgroundColor:"#fff"
+  secondaryBtn: {
+    marginTop: 12,
+    paddingVertical: 12,
   },
-
-  payActive:{
-    borderColor:COLORS.accent
-  },
-
-  paymentBox:{
-    marginTop:10
-  },
-
-  merchantText:{
-    fontSize:12,
-    marginBottom:4
-  },
-
-  merchantNumber:{
-    fontSize:18,
+  secondaryBtnText: {
+    fontSize: 13,
+    color: COLORS.accent,
     ...FONTS.bold,
-    marginBottom:10
   },
-
-  summary:{
-    marginTop:20,
-    marginBottom:20
-  },
-
-  total:{
-    fontSize:16,
-    ...FONTS.bold,
-    marginTop:6
-  },
-
-  button:{
-    padding:14,
-    borderRadius:10,
-    alignItems:"center"
-  },
-
-  buttonText:{
-    color:"#fff",
-    fontSize:14,
-    ...FONTS.bold
-  }
-
 });

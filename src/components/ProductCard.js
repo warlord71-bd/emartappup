@@ -1,13 +1,16 @@
-import React from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, Image, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 
 import { COLORS, FONTS } from '../theme/colors';
 import { useCart } from '../context/CartContext';
 import { getProductPrice as calcProductPrice, getProductImage, decodeHTML } from '../services/woocommerce';
 
-const ProductCard = ({ product, onPress }) => {
+const ProductCard = ({ product, onPress, compact = false }) => {
   const { addToCart } = useCart();
+  const [imageLoading, setImageLoading] = useState(true);
+  const [imageError, setImageError] = useState(false);
 
   const pricing = calcProductPrice(product);
   const imageUrl = getProductImage(product);
@@ -17,43 +20,109 @@ const ProductCard = ({ product, onPress }) => {
     product?.attributes?.find((a) => a.name === 'Brand')?.options?.[0] ||
     '';
 
+  const name = decodeHTML(product?.name || '');
+
+  // ── Compact layout (horizontal scroll cards) ──
+  if (compact) {
+    return (
+      <TouchableOpacity style={styles.compactCard} onPress={onPress} activeOpacity={0.85}>
+        {product?.on_sale && pricing.discount > 0 && (
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>-{pricing.discount}%</Text>
+          </View>
+        )}
+
+        <View style={styles.compactImageBox}>
+          {imageLoading && (
+            <ActivityIndicator size="small" color={COLORS.accent} style={StyleSheet.absoluteFill} />
+          )}
+          {!imageError ? (
+            <Image
+              source={{ uri: imageUrl }}
+              style={styles.compactImage}
+              resizeMode="contain"
+              onLoad={() => setImageLoading(false)}
+              onError={() => { setImageError(true); setImageLoading(false); }}
+            />
+          ) : (
+            <Ionicons name="image-outline" size={30} color={COLORS.textLight} />
+          )}
+        </View>
+
+        <View style={styles.compactInfo}>
+          {brand ? (
+            <Text style={styles.brand} numberOfLines={1}>{decodeHTML(brand)}</Text>
+          ) : null}
+          <Text style={styles.compactName} numberOfLines={2}>{name}</Text>
+          <View style={styles.priceRow}>
+            <Text style={styles.price}>৳{Math.round(pricing.current || 0)}</Text>
+            {pricing.onSale && (
+              <Text style={styles.oldPrice}>৳{Math.round(pricing.regular || 0)}</Text>
+            )}
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  }
+
+  // ── Full layout (grid cards) ──
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.85}>
-      {product?.on_sale && (
+      {/* Sale / Discount Badge */}
+      {product?.on_sale && pricing.discount > 0 && (
         <View style={styles.badge}>
-          <Text style={styles.badgeText}>Sale</Text>
+          <Text style={styles.badgeText}>-{pricing.discount}%</Text>
         </View>
       )}
 
-      <View style={styles.imageContainer}>
-        <Image source={{ uri: imageUrl }} style={styles.image} resizeMode="contain" />
+      {/* Product Image */}
+      <View style={styles.imageBox}>
+        {imageLoading && (
+          <ActivityIndicator size="small" color={COLORS.accent} style={styles.loader} />
+        )}
+        {!imageError ? (
+          <Image
+            source={{ uri: imageUrl }}
+            style={styles.image}
+            resizeMode="contain"
+            onLoad={() => setImageLoading(false)}
+            onError={() => { setImageError(true); setImageLoading(false); }}
+          />
+        ) : (
+          <View style={styles.errorBox}>
+            <Ionicons name="image-outline" size={36} color={COLORS.textLight} />
+          </View>
+        )}
       </View>
 
+      {/* Product Info */}
       <View style={styles.info}>
         {brand ? (
-          <Text style={styles.brand} numberOfLines={1}>
-            {decodeHTML(brand)}
-          </Text>
+          <Text style={styles.brand} numberOfLines={1}>{decodeHTML(brand)}</Text>
         ) : null}
 
-        <Text style={styles.name} numberOfLines={2}>
-          {decodeHTML(product?.name || '')}
-        </Text>
+        <Text style={styles.name} numberOfLines={2}>{name}</Text>
 
+        {/* Rating (if exists) */}
+        {parseFloat(product?.average_rating) > 0 && (
+          <View style={styles.ratingRow}>
+            <Text style={styles.stars}>
+              {'★'.repeat(Math.round(parseFloat(product.average_rating)))}
+              {'☆'.repeat(5 - Math.round(parseFloat(product.average_rating)))}
+            </Text>
+            <Text style={styles.ratingCount}>({product.rating_count || 0})</Text>
+          </View>
+        )}
+
+        {/* Price */}
         <View style={styles.priceRow}>
           <Text style={styles.price}>৳{Math.round(pricing.current || 0)}</Text>
-
           {pricing.onSale && (
             <Text style={styles.oldPrice}>৳{Math.round(pricing.regular || 0)}</Text>
           )}
-
-          {pricing.onSale && pricing.discount > 0 && (
-            <View style={styles.discountBadge}>
-              <Text style={styles.discountText}>{pricing.discount}%</Text>
-            </View>
-          )}
         </View>
 
+        {/* Add to Cart */}
         <TouchableOpacity
           onPress={(e) => {
             e.stopPropagation?.();
@@ -67,6 +136,7 @@ const ProductCard = ({ product, onPress }) => {
             end={{ x: 1, y: 0 }}
             style={styles.addBtn}
           >
+            <Ionicons name="cart-outline" size={13} color="#fff" />
             <Text style={styles.addBtnText}>ADD TO CART</Text>
           </LinearGradient>
         </TouchableOpacity>
@@ -76,6 +146,9 @@ const ProductCard = ({ product, onPress }) => {
 };
 
 const styles = StyleSheet.create({
+  // ═══════════════════════════════
+  // FULL CARD (grid layout)
+  // ═══════════════════════════════
   card: {
     backgroundColor: COLORS.card,
     borderRadius: 14,
@@ -84,58 +157,90 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
   },
+
   badge: {
     position: 'absolute',
-    top: 6,
-    left: 6,
+    top: 8,
+    left: 8,
     zIndex: 2,
-    backgroundColor: COLORS.tagBg,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+    backgroundColor: COLORS.sale,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
     borderRadius: 6,
   },
   badgeText: {
     fontSize: 9,
     ...FONTS.bold,
-    color: COLORS.tagColor,
+    color: '#fff',
   },
-  imageContainer: {
-    height: 130,
-    backgroundColor: COLORS.accentLight,
+
+  imageBox: {
+    height: 170,
+    backgroundColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 8,
+  },
+  loader: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
   },
   image: {
-    width: '100%',
-    height: '100%',
+    width: '90%',
+    height: '90%',
   },
+  errorBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    opacity: 0.4,
+  },
+
   info: {
     padding: 10,
+    paddingTop: 8,
   },
+
   brand: {
     fontSize: 9,
     ...FONTS.bold,
     color: COLORS.accent,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
-    marginBottom: 2,
+    marginBottom: 3,
   },
+
   name: {
     fontSize: 12,
     ...FONTS.semibold,
     color: COLORS.text,
-    lineHeight: 16,
-    height: 32,
-    marginBottom: 3,
+    lineHeight: 17,
+    minHeight: 34,
+    marginBottom: 4,
   },
-  priceRow: {
+
+  ratingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 6,
+    gap: 3,
+    marginBottom: 4,
+  },
+  stars: {
+    fontSize: 10,
+    color: COLORS.gold,
+    letterSpacing: -1,
+  },
+  ratingCount: {
+    fontSize: 9,
+    color: COLORS.textSecondary,
+  },
+
+  priceRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 5,
+    marginBottom: 8,
   },
   price: {
-    fontSize: 15,
+    fontSize: 16,
     ...FONTS.extrabold,
     color: COLORS.accent,
   },
@@ -143,30 +248,57 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: COLORS.textLight,
     textDecorationLine: 'line-through',
-    marginLeft: 5,
   },
-  discountBadge: {
-    backgroundColor: '#E74C3C15',
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 4,
-    marginLeft: 5,
-  },
-  discountText: {
-    fontSize: 9,
-    ...FONTS.bold,
-    color: COLORS.sale,
-  },
+
   addBtn: {
-    paddingVertical: 7,
-    borderRadius: 8,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingVertical: 8,
+    borderRadius: 8,
   },
   addBtnText: {
     fontSize: 10,
     ...FONTS.bold,
     color: '#fff',
     letterSpacing: 0.5,
+  },
+
+  // ═══════════════════════════════
+  // COMPACT CARD (horizontal scroll)
+  // ═══════════════════════════════
+  compactCard: {
+    width: '100%',
+    backgroundColor: COLORS.card,
+    borderRadius: 14,
+    overflow: 'hidden',
+    ...COLORS.shadow,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+
+  compactImageBox: {
+    height: 140,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  compactImage: {
+    width: '85%',
+    height: '85%',
+  },
+
+  compactInfo: {
+    padding: 8,
+  },
+  compactName: {
+    fontSize: 11,
+    ...FONTS.semibold,
+    color: COLORS.text,
+    lineHeight: 15,
+    minHeight: 30,
+    marginBottom: 4,
   },
 });
 

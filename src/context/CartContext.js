@@ -1,9 +1,14 @@
-import React, { createContext, useContext, useReducer } from 'react';
+import React, { createContext, useContext, useEffect, useReducer } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
+const CART_KEY = '@emart_cart';
 const CartContext = createContext();
 
 const cartReducer = (state, action) => {
   switch (action.type) {
+    case 'RESTORE':
+      return { ...state, items: action.payload };
+
     case 'ADD_ITEM': {
       const existingIndex = state.items.findIndex(item => item.id === action.payload.id);
       if (existingIndex >= 0) {
@@ -13,18 +18,26 @@ const cartReducer = (state, action) => {
       }
       return { ...state, items: [...state.items, { ...action.payload, quantity: 1 }] };
     }
+
     case 'REMOVE_ITEM':
       return { ...state, items: state.items.filter(item => item.id !== action.payload) };
+
     case 'UPDATE_QUANTITY': {
+      // Remove item if quantity drops to 0 or below
+      if (action.payload.quantity <= 0) {
+        return { ...state, items: state.items.filter(item => item.id !== action.payload.id) };
+      }
       const updated = state.items.map(item =>
         item.id === action.payload.id
-          ? { ...item, quantity: Math.max(1, action.payload.quantity) }
+          ? { ...item, quantity: action.payload.quantity }
           : item
       );
       return { ...state, items: updated };
     }
+
     case 'CLEAR_CART':
       return { ...state, items: [] };
+
     default:
       return state;
   }
@@ -33,15 +46,47 @@ const cartReducer = (state, action) => {
 export const CartProvider = ({ children }) => {
   const [state, dispatch] = useReducer(cartReducer, { items: [] });
 
+  // Restore cart on launch
+  useEffect(() => {
+    const restore = async () => {
+      try {
+        const saved = await AsyncStorage.getItem(CART_KEY);
+        if (saved) {
+          dispatch({ type: 'RESTORE', payload: JSON.parse(saved) });
+        }
+      } catch (e) {
+        console.log('Cart restore error:', e);
+      }
+    };
+    restore();
+  }, []);
+
+  // Persist cart on every change
+  useEffect(() => {
+    const save = async () => {
+      try {
+        await AsyncStorage.setItem(CART_KEY, JSON.stringify(state.items));
+      } catch (e) {
+        console.log('Cart save error:', e);
+      }
+    };
+    save();
+  }, [state.items]);
+
   const addToCart = (product) => {
+    const price = parseFloat(product.sale_price) || parseFloat(product.price) || 0;
+    const regularPrice = parseFloat(product.regular_price) || price;
+
     dispatch({
       type: 'ADD_ITEM',
       payload: {
         id: product.id,
         name: product.name,
-        price: parseFloat(product.price) || 0,
-        image: product.images?.[0]?.src || '',
-        brand: product.brands || '',
+        price,
+        regularPrice,
+        onSale: price < regularPrice,
+        image: product.images?.[0]?.src?.replace(/^http:/, 'https:') || '',
+        brand: product.brands || product.attributes?.find(a => a.name === 'Brand')?.options?.[0] || '',
       },
     });
   };

@@ -1,26 +1,123 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, Image, TouchableOpacity, StyleSheet, Dimensions, useWindowDimensions } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, ScrollView, Image, TouchableOpacity, StyleSheet, Dimensions, TextInput, Alert, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS } from '../theme/colors';
 import { useLanguage } from '../context/LanguageContext';
 import { useCart } from '../context/CartContext';
-import { getProductPrice, getProductImages } from '../services/woocommerce';
+import { useAuth } from '../context/AuthContext';
+import { getProductPrice, getProductImages, getProductReviews, submitProductReview, stripHTML } from '../services/woocommerce';
 
 const { width } = Dimensions.get('window');
+
+// ── Star Rating Input ──
+const StarInput = ({ rating, onRate }) => (
+  <View style={{ flexDirection: 'row', gap: 4 }}>
+    {[1, 2, 3, 4, 5].map((star) => (
+      <TouchableOpacity key={star} onPress={() => onRate(star)}>
+        <Ionicons
+          name={star <= rating ? 'star' : 'star-outline'}
+          size={24}
+          color={COLORS.gold}
+        />
+      </TouchableOpacity>
+    ))}
+  </View>
+);
+
+// ── Single Review Card ──
+const ReviewCard = ({ review }) => {
+  const date = new Date(review.date_created).toLocaleDateString('en-GB', {
+    day: '2-digit', month: 'short', year: 'numeric',
+  });
+
+  return (
+    <View style={styles.reviewCard}>
+      <View style={styles.reviewHeader}>
+        <View style={styles.reviewAvatar}>
+          <Text style={styles.reviewAvatarText}>
+            {(review.reviewer || 'U').charAt(0).toUpperCase()}
+          </Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.reviewerName}>{review.reviewer}</Text>
+          <Text style={styles.reviewDate}>{date}</Text>
+        </View>
+        <View style={styles.reviewStars}>
+          <Text style={{ fontSize: 11, color: COLORS.gold }}>
+            {'★'.repeat(review.rating)}{'☆'.repeat(5 - review.rating)}
+          </Text>
+        </View>
+      </View>
+      <Text style={styles.reviewText}>{stripHTML(review.review)}</Text>
+    </View>
+  );
+};
 
 const ProductDetailScreen = ({ navigation, route }) => {
   const { product } = route.params;
   const { t } = useLanguage();
   const { addToCart } = useCart();
+  const { user, isLoggedIn } = useAuth();
   const [qty, setQty] = useState(1);
   const [activeImage, setActiveImage] = useState(0);
   const [added, setAdded] = useState(false);
+
+  // Reviews state
+  const [reviews, setReviews] = useState([]);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [showReviewForm, setShowReviewForm] = useState(false);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewText, setReviewText] = useState('');
+  const [reviewName, setReviewName] = useState(user?.name || '');
+  const [reviewEmail, setReviewEmail] = useState(user?.emailOrPhone || user?.email || '');
+  const [submitting, setSubmitting] = useState(false);
 
   const pricing = getProductPrice(product);
   const images = getProductImages(product);
   const brand = product.brands || product.attributes?.find(a => a.name === 'Brand')?.options?.[0] || '';
   const inStock = product.stock_status === 'instock';
+
+  // Load reviews
+  useEffect(() => {
+    loadReviews();
+  }, []);
+
+  const loadReviews = async () => {
+    setReviewsLoading(true);
+    const res = await getProductReviews(product.id);
+    if (res.data) setReviews(res.data);
+    setReviewsLoading(false);
+  };
+
+  const handleSubmitReview = async () => {
+    if (!reviewName.trim() || !reviewEmail.trim()) {
+      Alert.alert('Missing Info', 'Please enter your name and email');
+      return;
+    }
+    if (!reviewText.trim()) {
+      Alert.alert('Missing Review', 'Please write a review');
+      return;
+    }
+
+    setSubmitting(true);
+    const res = await submitProductReview(product.id, {
+      name: reviewName.trim(),
+      email: reviewEmail.trim(),
+      review: reviewText.trim(),
+      rating: reviewRating,
+    });
+
+    if (res.error) {
+      Alert.alert('Error', 'Could not submit review. Try again.');
+    } else {
+      Alert.alert('Thank You!', 'Your review has been submitted.');
+      setReviewText('');
+      setShowReviewForm(false);
+      loadReviews();
+    }
+    setSubmitting(false);
+  };
 
   const handleAddToCart = () => {
     addToCart(product);
@@ -28,7 +125,6 @@ const ProductDetailScreen = ({ navigation, route }) => {
     setTimeout(() => setAdded(false), 1500);
   };
 
-  // Strip HTML tags from description
   const cleanDescription = (html) => {
     return html?.replace(/<[^>]*>/g, '').replace(/&[^;]+;/g, ' ').trim() || '';
   };
@@ -134,6 +230,99 @@ const ProductDetailScreen = ({ navigation, route }) => {
             ))}
           </View>
 
+          {/* ════════════════════════════════════ */}
+          {/* REVIEWS SECTION                      */}
+          {/* ════════════════════════════════════ */}
+          <View style={styles.reviewsSection}>
+            <View style={styles.reviewsSectionHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.reviewsSectionTitle}>Customer Reviews</Text>
+                {reviews.length > 0 && (
+                  <Text style={styles.reviewsSummary}>
+                    {product.average_rating} ★ from {reviews.length} reviews
+                  </Text>
+                )}
+              </View>
+              <TouchableOpacity
+                style={styles.writeReviewBtn}
+                onPress={() => setShowReviewForm(!showReviewForm)}
+              >
+                <Ionicons name="create-outline" size={14} color={COLORS.accent} />
+                <Text style={styles.writeReviewText}>Write Review</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Review Form */}
+            {showReviewForm && (
+              <View style={styles.reviewForm}>
+                <Text style={styles.reviewFormTitle}>Your Review</Text>
+
+                <StarInput rating={reviewRating} onRate={setReviewRating} />
+
+                {!isLoggedIn && (
+                  <>
+                    <TextInput
+                      style={styles.reviewInput}
+                      placeholder="Your Name"
+                      placeholderTextColor={COLORS.textLight}
+                      value={reviewName}
+                      onChangeText={setReviewName}
+                    />
+                    <TextInput
+                      style={styles.reviewInput}
+                      placeholder="Your Email"
+                      placeholderTextColor={COLORS.textLight}
+                      value={reviewEmail}
+                      onChangeText={setReviewEmail}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                    />
+                  </>
+                )}
+
+                <TextInput
+                  style={[styles.reviewInput, { height: 80, textAlignVertical: 'top' }]}
+                  placeholder="Write your review..."
+                  placeholderTextColor={COLORS.textLight}
+                  value={reviewText}
+                  onChangeText={setReviewText}
+                  multiline
+                />
+
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={handleSubmitReview}
+                  disabled={submitting}
+                >
+                  <LinearGradient
+                    colors={submitting ? [COLORS.textLight, COLORS.textLight] : COLORS.gradientButton}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.submitReviewBtn}
+                  >
+                    <Text style={styles.submitReviewText}>
+                      {submitting ? 'Submitting...' : 'Submit Review'}
+                    </Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Reviews List */}
+            {reviewsLoading ? (
+              <ActivityIndicator color={COLORS.accent} style={{ padding: 20 }} />
+            ) : reviews.length > 0 ? (
+              reviews.map((review) => (
+                <ReviewCard key={review.id} review={review} />
+              ))
+            ) : (
+              <View style={styles.noReviews}>
+                <Ionicons name="chatbubble-outline" size={28} color={COLORS.textLight} />
+                <Text style={styles.noReviewsText}>No reviews yet. Be the first!</Text>
+              </View>
+            )}
+          </View>
+
           <View style={{ height: 80 }} />
         </View>
       </ScrollView>
@@ -164,7 +353,7 @@ const styles = StyleSheet.create({
   topBar: { position: 'absolute', top: 44, left: 16, right: 16, zIndex: 10, flexDirection: 'row', justifyContent: 'space-between' },
   topBtn: { width: 36, height: 36, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.9)', alignItems: 'center', justifyContent: 'center', ...COLORS.shadow },
   imageSection: { backgroundColor: COLORS.accentLight, paddingTop: 80, paddingBottom: 12 },
-  mainImage: { width: width, height: 250 },
+  mainImage: { width: width, height: 280 },
   thumbRow: { paddingHorizontal: 16, paddingTop: 8, gap: 8 },
   thumb: { width: 50, height: 50, borderRadius: 8, borderWidth: 2, borderColor: COLORS.border, overflow: 'hidden', marginRight: 8 },
   thumbActive: { borderColor: COLORS.accent },
@@ -195,6 +384,53 @@ const styles = StyleSheet.create({
   infoRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   infoLabel: { fontSize: 12, ...FONTS.semibold, color: COLORS.text },
   infoValue: { fontSize: 11, color: COLORS.textSecondary, flex: 1 },
+
+  // ── Reviews ──
+  reviewsSection: {
+    marginTop: 20, paddingTop: 16, borderTopWidth: 1, borderTopColor: COLORS.border,
+  },
+  reviewsSectionHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12,
+  },
+  reviewsSectionTitle: { fontSize: 15, ...FONTS.bold, color: COLORS.text },
+  reviewsSummary: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
+  writeReviewBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingVertical: 6, paddingHorizontal: 12,
+    borderRadius: 8, borderWidth: 1, borderColor: COLORS.accent,
+  },
+  writeReviewText: { fontSize: 11, ...FONTS.bold, color: COLORS.accent },
+
+  reviewForm: {
+    backgroundColor: COLORS.bg, borderRadius: 14, padding: 14, marginBottom: 14, gap: 10,
+  },
+  reviewFormTitle: { fontSize: 13, ...FONTS.bold, color: COLORS.text },
+  reviewInput: {
+    backgroundColor: '#fff', borderWidth: 1, borderColor: COLORS.border,
+    borderRadius: 10, padding: 10, fontSize: 13, color: COLORS.text,
+  },
+  submitReviewBtn: {
+    paddingVertical: 10, borderRadius: 10, alignItems: 'center',
+  },
+  submitReviewText: { fontSize: 13, ...FONTS.bold, color: '#fff' },
+
+  reviewCard: {
+    backgroundColor: COLORS.bg, borderRadius: 12, padding: 12, marginBottom: 8,
+  },
+  reviewHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
+  reviewAvatar: {
+    width: 34, height: 34, borderRadius: 17, backgroundColor: COLORS.accent,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  reviewAvatarText: { fontSize: 14, ...FONTS.bold, color: '#fff' },
+  reviewerName: { fontSize: 12, ...FONTS.bold, color: COLORS.text },
+  reviewDate: { fontSize: 10, color: COLORS.textSecondary },
+  reviewStars: { flexDirection: 'row' },
+  reviewText: { fontSize: 12, color: COLORS.textSecondary, lineHeight: 18 },
+  noReviews: { alignItems: 'center', padding: 24, gap: 8 },
+  noReviewsText: { fontSize: 12, color: COLORS.textSecondary },
+
+  // ── Bottom Bar ──
   bottomBar: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     flexDirection: 'row', gap: 8, padding: 12, paddingBottom: 28,

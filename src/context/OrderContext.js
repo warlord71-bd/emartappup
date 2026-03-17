@@ -1,9 +1,40 @@
-import React, { createContext, useContext, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
+const ORDERS_KEY = '@emart_orders';
 const OrderContext = createContext();
 
 export const OrderProvider = ({ children }) => {
   const [orders, setOrders] = useState([]);
+  const [loaded, setLoaded] = useState(false);
+
+  // Restore orders on launch
+  useEffect(() => {
+    const restore = async () => {
+      try {
+        const saved = await AsyncStorage.getItem(ORDERS_KEY);
+        if (saved) setOrders(JSON.parse(saved));
+      } catch (e) {
+        console.log('Orders restore error:', e);
+      } finally {
+        setLoaded(true);
+      }
+    };
+    restore();
+  }, []);
+
+  // Persist orders on every change (skip initial empty state)
+  useEffect(() => {
+    if (!loaded) return;
+    const save = async () => {
+      try {
+        await AsyncStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
+      } catch (e) {
+        console.log('Orders save error:', e);
+      }
+    };
+    save();
+  }, [orders, loaded]);
 
   const addOrder = (orderData) => {
     const newOrder = {

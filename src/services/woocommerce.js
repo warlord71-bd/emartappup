@@ -31,6 +31,34 @@ const apiFetch = async (endpoint, params = '') => {
   }
 };
 
+const apiPost = async (endpoint, body) => {
+
+  const url = `${BASE}${endpoint}?${AUTH}`;
+
+  try {
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.message || `API Error: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    return { data, error: null };
+
+  } catch (error) {
+
+    return { data: null, error: error.message };
+
+  }
+};
+
 
 
 // ================================
@@ -155,36 +183,56 @@ export const getSubCategories = async (parentId) => {
 
 
 // ================================
+// REVIEWS
+// ================================
+
+export const getProductReviews = async (productId) => {
+
+  return apiFetch(
+    '/products/reviews',
+    `product=${productId}&per_page=20&orderby=date_created&order=desc`
+  );
+
+};
+
+
+export const submitProductReview = async (productId, reviewData) => {
+
+  return apiPost('/products/reviews', {
+    product_id: productId,
+    review: reviewData.review,
+    reviewer: reviewData.name,
+    reviewer_email: reviewData.email,
+    rating: reviewData.rating,
+  });
+
+};
+
+
+
+// ================================
+// COUPONS
+// ================================
+
+export const validateCoupon = async (code) => {
+
+  return apiFetch(
+    '/coupons',
+    `code=${encodeURIComponent(code)}`
+  );
+
+};
+
+
+
+// ================================
 // ORDERS
 // ================================
 
 export const createOrder = async (orderData) => {
 
-  const url = `${BASE}/orders?${AUTH}`;
+  return apiPost('/orders', orderData);
 
-  try {
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(orderData)
-    });
-
-    if (!response.ok) {
-      throw new Error(`Order API Error: ${response.status}`);
-    }
-
-    const data = await response.json();
-
-    return { data, error: null };
-
-  } catch (error) {
-
-    return { data: null, error: error.message };
-
-  }
 };
 
 
@@ -198,12 +246,12 @@ export const decodeHTML = (str = '') => {
   if (!str || typeof str !== 'string') return '';
 
   const map = {
-    '&#8217;': '’',
-    '&#8216;': '‘',
-    '&#8220;': '“',
-    '&#8221;': '”',
+    '&#8217;': '\u2019',
+    '&#8216;': '\u2018',
+    '&#8220;': '\u201C',
+    '&#8221;': '\u201D',
     '&#038;': '&',
-    '&#8211;': '–',
+    '&#8211;': '\u2013',
     '&amp;': '&',
     '&lt;': '<',
     '&gt;': '>',
