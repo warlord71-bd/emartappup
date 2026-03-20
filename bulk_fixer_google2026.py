@@ -1,4 +1,3 @@
-kill %1 2>/dev/null; cat > /tmp/bulk_fixer_google2026.py << 'PYEOF'
 import requests
 from requests.auth import HTTPBasicAuth
 import time
